@@ -1,4 +1,4 @@
-name: Telegram Login
+name: "Telegram Login: Step 1 - Send Code"
 
 on:
   workflow_dispatch:
@@ -6,9 +6,6 @@ on:
       phone:
         description: 'Phone number (e.g. +79991234567)'
         required: true
-      password:
-        description: '2FA password (leave empty if not enabled)'
-        required: false
 
 jobs:
   send-code:
@@ -44,52 +41,3 @@ jobs:
           name: telegram-session
           path: storage/app/telegram/
           retention-days: 1
-
-  complete-login:
-    runs-on: ubuntu-latest
-    needs: send-code
-    timeout-minutes: 10
-    environment: telegram-code
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          extensions: mbstring, bcmath, curl, intl, gmp, xml, dom
-          coverage: none
-
-      - name: Install dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Prepare environment
-        run: |
-          cp .env.example .env
-          mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
-
-      - name: Download partial session
-        uses: actions/download-artifact@v4
-        with:
-          name: telegram-session
-          path: storage/app/telegram/
-
-      - name: Complete login
-        env:
-          TG_API_ID: ${{ secrets.TG_API_ID }}
-          TG_API_HASH: ${{ secrets.TG_API_HASH }}
-        run: |
-          ARGS="--code=${{ secrets.TG_LOGIN_CODE }}"
-          if [ -n "${{ inputs.password }}" ]; then
-            ARGS="$ARGS --password=${{ inputs.password }}"
-          fi
-          php artisan telegram:login $ARGS
-
-      - name: Encrypt and commit session
-        run: |
-          tar cz --exclude='*.ipc' -C storage/app/telegram . | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:${{ secrets.TG_SESSION_PASSPHRASE }}" -out .github/session.enc
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/session.enc
-          git diff --cached --quiet || git commit -m "chore: update Telegram session from CI"
-          git push
