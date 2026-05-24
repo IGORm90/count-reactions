@@ -34,6 +34,12 @@ jobs:
       - name: Prepare .env
         run: cp .env.example .env
 
+      - name: Create storage directories
+        run: mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
+
+      - name: Restore MadelineProto session
+        run: openssl enc -aes-256-cbc -pbkdf2 -d -pass "pass:${{ secrets.TG_SESSION_PASSPHRASE }}" -in .github/session.enc | tar xz -C storage/app/telegram/
+
       - name: Run reactions top
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
