@@ -1,23 +1,15 @@
-name: Telegram Login
+name: Telegram Login (QR)
 
 on:
   workflow_dispatch:
-    inputs:
-      phone:
-        description: 'Phone number (e.g. +79991234567)'
-        required: true
-      password:
-        description: '2FA password (leave empty if not enabled)'
-        required: false
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   login:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -36,18 +28,11 @@ jobs:
           cp .env.example .env
           mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
 
-      - name: Login (sends code, then polls for it)
+      - name: Login via QR code
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          ARGS="--phone=${{ inputs.phone }} --poll-code --timeout=300"
-          if [ -n "${{ inputs.password }}" ]; then
-            ARGS="$ARGS --password=${{ inputs.password }}"
-          fi
-          php artisan telegram:login $ARGS
+        run: php artisan telegram:login
 
       - name: Encrypt and commit session
         run: |
