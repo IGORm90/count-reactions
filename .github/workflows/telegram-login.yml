@@ -3,28 +3,19 @@ name: Telegram Login
 on:
   workflow_dispatch:
     inputs:
-      step:
-        description: 'Step: "phone" to send code, "code" to complete login'
-        required: true
-        type: choice
-        options:
-          - phone
-          - code
-      value:
-        description: 'Phone number (for step=phone) or verification code (for step=code)'
+      phone:
+        description: 'Phone number (e.g. +79991234567)'
         required: true
       password:
-        description: '2FA password (if enabled, only for step=code)'
+        description: '2FA password (leave empty if not enabled)'
         required: false
 
 jobs:
-  login:
+  send-code:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -36,33 +27,59 @@ jobs:
       - name: Install dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Prepare .env
-        run: cp .env.example .env
-
-      - name: Create storage directories
-        run: mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
-
-      - name: Restore session (if exists)
-        if: inputs.step == 'code'
+      - name: Prepare environment
         run: |
-          if [ -f .github/session.enc ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -d -pass "pass:${{ secrets.TG_SESSION_PASSPHRASE }}" -in .github/session.enc | tar xz -C storage/app/telegram/ || true
-          fi
+          cp .env.example .env
+          mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
 
       - name: Send login code
-        if: inputs.step == 'phone'
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-        run: php artisan telegram:login --phone="${{ inputs.value }}"
+        run: php artisan telegram:login --phone="${{ inputs.phone }}"
+
+      - name: Upload partial session
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-session
+          path: storage/app/telegram/
+          retention-days: 1
+
+  complete-login:
+    runs-on: ubuntu-latest
+    needs: send-code
+    timeout-minutes: 10
+    environment: telegram-code
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, bcmath, curl, intl, gmp, xml, dom
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
+
+      - name: Download partial session
+        uses: actions/download-artifact@v4
+        with:
+          name: telegram-session
+          path: storage/app/telegram/
 
       - name: Complete login
-        if: inputs.step == 'code'
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
         run: |
-          ARGS="--code=${{ inputs.value }}"
+          ARGS="--code=${{ secrets.TG_LOGIN_CODE }}"
           if [ -n "${{ inputs.password }}" ]; then
             ARGS="$ARGS --password=${{ inputs.password }}"
           fi
