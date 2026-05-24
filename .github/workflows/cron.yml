@@ -1,0 +1,46 @@
+name: Daily Reactions Top
+
+on:
+  schedule:
+    - cron: '30 21 * * *'          # 00:30 MSK = 21:30 UTC
+  workflow_dispatch:                # кнопка ручного запуска в UI
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, bcmath, curl, intl, gmp, xml, dom
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Prepare .env
+        run: cp .env.example .env
+
+      - name: Run reactions top
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          APP_ENV: production
+          APP_DEBUG: false
+          LOG_CHANNEL: stderr
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: php artisan telegram:history --since="1 day ago"
