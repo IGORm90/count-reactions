@@ -46,13 +46,15 @@ class TelegramHistoryCommand extends Command
             $bar = null;
 
             if ($since) {
-                $sinceTs = strtotime($since);
+                $tz = new \DateTimeZone('Europe/Moscow');
+                $dt = new \DateTime($since, $tz);
+                $sinceTs = $dt->getTimestamp();
                 if ($sinceTs === false) {
                     $this->error("Не удалось разобрать дату: {$since}");
                     return self::FAILURE;
                 }
                 $all = true;
-                $this->info('Сообщения с: ' . date('Y-m-d H:i:s', $sinceTs));
+                $this->info('Сообщения с: ' . $dt->format('Y-m-d H:i:s') . ' MSK');
             }
 
             do {
