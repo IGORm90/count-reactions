@@ -10,6 +10,11 @@ on:
         description: '2FA password (leave empty if not enabled)'
         required: false
 
+permissions:
+  contents: write
+  actions: write
+  variables: write
+
 jobs:
   login:
     runs-on: ubuntu-latest
