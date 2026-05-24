@@ -1,4 +1,4 @@
-name: "Telegram Login: Step 1 - Send Code"
+name: Telegram Login
 
 on:
   workflow_dispatch:
@@ -6,11 +6,14 @@ on:
       phone:
         description: 'Phone number (e.g. +79991234567)'
         required: true
+      password:
+        description: '2FA password (leave empty if not enabled)'
+        required: false
 
 jobs:
-  send-code:
+  login:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -29,15 +32,24 @@ jobs:
           cp .env.example .env
           mkdir -p storage/app/telegram storage/framework/{cache,sessions,views}
 
-      - name: Send login code
+      - name: Login (sends code, then polls for it)
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-        run: php artisan telegram:login --phone="${{ inputs.phone }}"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ARGS="--phone=${{ inputs.phone }} --poll-code --timeout=300"
+          if [ -n "${{ inputs.password }}" ]; then
+            ARGS="$ARGS --password=${{ inputs.password }}"
+          fi
+          php artisan telegram:login $ARGS
 
-      - name: Upload partial session
-        uses: actions/upload-artifact@v4
-        with:
-          name: telegram-session
-          path: storage/app/telegram/
-          retention-days: 1
+      - name: Encrypt and commit session
+        run: |
+          tar cz --exclude='*.ipc' -C storage/app/telegram . | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:${{ secrets.TG_SESSION_PASSPHRASE }}" -out .github/session.enc
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/session.enc
+          git diff --cached --quiet || git commit -m "chore: update Telegram session from CI"
+          git push
