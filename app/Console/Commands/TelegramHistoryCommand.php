@@ -29,7 +29,7 @@ class TelegramHistoryCommand extends Command
             $mp = (new MadelineFactory())->make();
 
             // Populate internal peer database so getInfo() can resolve the chat
-            $mp->getDialogs();
+            $mp->getDialogIds();
 
             $info = $mp->getInfo($chat);
             $peerId = $info['bot_api_id'];
