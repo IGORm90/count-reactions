@@ -119,6 +119,7 @@ class TelegramLoginCommand extends Command
             return $response->json('value');
         }
 
+        $this->warn("Failed to read variable: HTTP {$response->status()} - {$response->body()}");
         return null;
     }
 
