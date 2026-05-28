@@ -152,21 +152,23 @@ class TelegramHistoryCommand extends Command
                             $name .= " (@{$username})";
                         }
                     } catch (\Throwable) {}
-                    return [$i + 1, $name, $row['reactions'], $row['messages']];
+                    $avg = $row['messages'] > 0 ? round($row['reactions'] / $row['messages'], 1) : 0;
+                    return [$i + 1, $name, $row['reactions'], $row['messages'], $avg];
                 })->toArray();
-                $this->table(['#', 'Пользователь', 'Реакций', 'Сообщений'], $topRows);
+                $this->table(['#', 'Пользователь', 'Реакций', 'Сообщений', 'Реакц./сообщ.'], $topRows);
 
                 $medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-                $lines = ["🏆 **Топ-5 по реакциям за последний день:**\n"];
+                $lines = ["🏆 <b>Топ-5 по реакциям за последний день:</b>\n"];
                 foreach ($topRows as $i => $row) {
-                    $lines[] = "{$medals[$i]} {$row[1]} — {$row[2]} реакций ({$row[3]} сообщ.)";
+                    $name = htmlspecialchars($row[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+                    $lines[] = "{$medals[$i]} {$name} — {$row[2]} реакций ({$row[3]} сообщ., {$row[4]} реакц./сообщ.)";
                 }
                 $text = implode("\n", $lines);
 
                 $mp->messages->sendMessage([
                     'peer'       => $chat,
                     'message'    => $text,
-                    'parse_mode' => 'Markdown',
+                    'parse_mode' => 'HTML',
                 ]);
                 $this->info('Топ отправлен в чат.');
             }
