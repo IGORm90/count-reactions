@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Telegram\MadelineFactory;
 use danog\MadelineProto\RPCErrorException;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Http;
 
 class TelegramHistoryCommand extends Command
 {
@@ -133,7 +134,10 @@ class TelegramHistoryCommand extends Command
                     'reactions'  => $msgs->sum('reactions_total'),
                     'messages'   => $msgs->count(),
                 ])
-                ->sortByDesc('reactions')
+                ->sortBy(function ($row) {
+                    $avg = $row['messages'] > 0 ? $row['reactions'] / $row['messages'] : 0;
+                    return [-$row['reactions'], -$avg];
+                })
                 ->take(5)
                 ->values();
 
@@ -157,13 +161,46 @@ class TelegramHistoryCommand extends Command
                 })->toArray();
                 $this->table(['#', 'Пользователь', 'Реакций', 'Сообщений', 'Реакц./сообщ.'], $topRows);
 
+                // Check and update reactions record in GitHub Variable
+                $leader = $topRows[0];
+                $leaderName = $leader[1];
+                $leaderReactions = $leader[2];
+                $recordLine = '';
+
+                $repo = env('GITHUB_REPOSITORY');
+                $ghToken = env('GH_PAT');
+
+                if ($repo && $ghToken) {
+                    $stored = $this->getGithubVariable($repo, $ghToken, 'TG_REACTIONS_RECORD');
+                    $recordName = null;
+                    $recordValue = 0;
+
+                    if ($stored && str_contains($stored, ':')) {
+                        $parts = explode(':', $stored, 2);
+                        $recordValue = (int) $parts[1];
+                        $recordName = $parts[0];
+                    }
+
+                    if ($leaderReactions > $recordValue) {
+                        $newRecord = "{$leaderName}:{$leaderReactions}";
+                        $this->setGithubVariable($repo, $ghToken, 'TG_REACTIONS_RECORD', $newRecord);
+                        $this->info("Новый рекорд! {$leaderName} — {$leaderReactions} реакций");
+                        $recordLine = "\n\n🎉 <b>Новый рекорд!</b> {$leaderReactions} реакций — "
+                            . htmlspecialchars($leaderName, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                    } else {
+                        $this->info("Текущий рекорд: {$recordName} — {$recordValue} реакций");
+                        $recordLine = "\n\n📊 <b>Рекорд:</b> {$recordValue} реакций — "
+                            . htmlspecialchars($recordName, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                    }
+                }
+
                 $medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
                 $lines = ["🏆 <b>Топ-5 по реакциям за последний день:</b>\n"];
                 foreach ($topRows as $i => $row) {
                     $name = htmlspecialchars($row[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
-                    $lines[] = "{$medals[$i]} {$name} — {$row[2]} реакций ({$row[3]} сообщ., {$row[4]} реакц./сообщ.)";
+                    $lines[] = "{$medals[$i]} {$name} — {$row[2]} реакт ({$row[3]} сообщ., {$row[4]} р/с)";
                 }
-                $text = implode("\n", $lines);
+                $text = implode("\n", $lines) . $recordLine;
 
                 $mp->messages->sendMessage([
                     'peer'       => $chat,
@@ -216,6 +253,34 @@ class TelegramHistoryCommand extends Command
             'reactions'       => $reactions,
             'reactions_total' => $reactionsTotal,
         ];
+    }
+
+    private function getGithubVariable(string $repo, string $token, string $name): ?string
+    {
+        $response = Http::withToken($token)
+            ->get("https://api.github.com/repos/{$repo}/actions/variables/{$name}");
+
+        if ($response->successful()) {
+            return $response->json('value');
+        }
+
+        return null;
+    }
+
+    private function setGithubVariable(string $repo, string $token, string $name, string $value): void
+    {
+        $url = "https://api.github.com/repos/{$repo}/actions/variables/{$name}";
+
+        $response = Http::withToken($token)
+            ->patch($url, ['name' => $name, 'value' => $value]);
+
+        if (!$response->successful()) {
+            Http::withToken($token)
+                ->post("https://api.github.com/repos/{$repo}/actions/variables", [
+                    'name' => $name,
+                    'value' => $value,
+                ]);
+        }
     }
 
     private function downloadMedia($mp, array $msg, string|int $peerId): void
