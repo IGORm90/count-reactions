@@ -94,3 +94,4 @@ routes/
 └── console.php                     — расписание
 storage/app/telegram/               — сессия и медиа (в .gitignore)
 ```
+edit
